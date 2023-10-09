@@ -10,7 +10,7 @@ Listens to "127.0.0.1:7878" adding all http Request to log.txt:
 
 Responds to all request with "200 OK".
 
-A request might loog like this:
+A request might look like this:
 
     curl "http://127.0.0.1:7878" \
         -X PATCH \
