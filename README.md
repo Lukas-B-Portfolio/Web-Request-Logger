@@ -21,8 +21,8 @@ A request might loog like this:
 The corresponding log entry should look like this:
 
         -------------------------------------------
-        Received Request at:	09/10/2023 17:49:32
-        From IP:				127.0.0.1:7878
+        Received Request at:    09/10/2023 17:49:32
+        From IP:	    	    127.0.0.1:7878
         Request:
         POST / HTTP/1.1
         Host: 127.0.0.1:7878
