@@ -3,7 +3,7 @@ use std::{
     net::{TcpListener, TcpStream, SocketAddr},
     fs::{File, OpenOptions},
     collections::HashMap,
-    path::Path
+    path::Path,
 };
 use chrono::prelude::*;
 
@@ -21,7 +21,8 @@ fn main() {
     for stream in listener.incoming() {
         let stream = stream.unwrap();
         //log_request(&stream, &mut log);
-        parse_request(&stream);
+        let test = parse_request(&stream);
+        println!("{:?}", test);
         response(stream);
     }
 }
@@ -63,20 +64,44 @@ fn timestamp() -> String{
     format!("{}", Local::now().format("%d/%m/%Y %H:%M:%S"))
 }
 
+/// Parses request from TcpStream into HttpRequest struct
 fn parse_request(mut stream: &TcpStream) -> HttpRequest {
     let mut buf_reader = BufReader::new(&mut stream);
-    let mut test = String::new();
-    buf_reader.read_line(&mut test).expect("TODO: panic message");
-    let line = parse_request_line(&test);
-    println!("{:?}", line.unwrap());
+    let mut line = String::new();
+    buf_reader.read_line(&mut line).expect("Unable to read line from BufReader.");
+    // Read request line
+    let request_line = parse_request_line(&line).expect("Unable to parse request line.");
+    let mut headers = HashMap::new();
+    line.clear();   // buf_reader.read_line appends to the String buffer thus it need to be cleared here
+    // Read headers
+    buf_reader.read_line(&mut line).expect("Unable to read line from BufReader.");
+    while line.contains(":") {
+        let line_vec: Vec<&str> = line.trim().split(": ").collect();
+        headers.insert(line_vec[0].to_string(), line_vec[1].to_string());
+        line.clear();   // buf_reader.read_line appends to the String buffer thus it need to be cleared here
+        buf_reader.read_line(&mut line).expect("Unable to read line from BufReader.");
+    }
+    // Read body (if one was declared in headers)
+    // Currently only reads UTF-8 bodies
+    // TODO Implement MIME type bodies
+    let body: Option<String>;
+    if headers.contains_key("content-length") {
+        let body_length = headers.get("content-length").unwrap().parse::<usize>().
+            expect("Content length header could not be parsed to usize.");
+        let mut body_buffer = vec![0u8; body_length];
+        buf_reader.read_exact(&mut body_buffer).expect("Unable to read body from buf_reader.");
+        body = match String::from_utf8(body_buffer) {
+            Ok(v) => Some(v),
+            Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+        };
+    } else {
+        body = None;
+    }
+    // Return HttpRequest adding timestamp and sender ip in the process
     HttpRequest {
-        request_line: Box::from(RequestLine {
-            verb: Verb::GET,
-            target: Box::from(Target::CompleteUrl(String::from("Test"))),
-            version: HTTPVersion::HTTP1_0,
-        }),
-        headers: Default::default(),
-        body: None,
+        request_line: Box::from(request_line),
+        headers,
+        body,
         timestamp: timestamp(),
         sender_ip: stream.local_addr().expect("Could not read sender ip."),
     }
@@ -123,6 +148,7 @@ fn parse_request_line(mut line: &String) -> Result<RequestLine, &str, > {
 }
 
 
+#[derive(Debug)]
 struct HttpRequest {
     timestamp: String,
     sender_ip: SocketAddr,
