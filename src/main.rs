@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let stream = stream.expect("Unable to get TcpStream from TcpListener.");
         let request = parse_request(&stream);
         insert(&request, &pool).await?;
-        println!("{:?}", request);
+        // println!("{:?}", request);
         response(stream);
     }
 
@@ -28,22 +28,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let sum: i32 = res.get("sum");
     println!("1 + 1 = {}", sum);
 
-    //println!("{:?}", read(&pool).await.unwrap());
-
     Ok(())
 }
 
+/// Inserts the HttpRequest into the database behind pool
 async fn insert(http_request: &HttpRequest, pool: &sqlx::PgPool) -> Result<(), Box<dyn Error>> {
-    let query = "INSERT INTO http_request (timestamp, host_ip, sender_ip, verb, target, version)\
-                        VALUES ($1, $2, $3, $4, $5, $6) RETURNING id";
+    let query = "INSERT INTO http_request (timestamp, sender_ip, verb, target, version)\
+                        VALUES ($1, $2, $3, $4, $5) RETURNING id";
 
     let id: (i32, ) = sqlx::query_as(query)
-        .bind(&http_request.timestamp)
-        .bind(&http_request.sender_ip)  // TODO figure out how to represent host header
-        .bind(&http_request.sender_ip)
-        .bind(&http_request.request_line.verb.to_string())
-        .bind(&http_request.request_line.target.to_string())
-        .bind(&http_request.request_line.version.to_string())
+        .bind(http_request.timestamp)
+        .bind(http_request.sender_ip)
+        .bind(http_request.request_line.verb.to_string())
+        .bind(http_request.request_line.target.to_string())
+        .bind(http_request.request_line.version.to_string())
         .fetch_one(pool)
         .await?;
 
@@ -59,7 +57,7 @@ async fn insert(http_request: &HttpRequest, pool: &sqlx::PgPool) -> Result<(), B
             .await?;
     }
 
-    // TODO Make last query conditional on body state
+    // Currently only writes to id and body_text as HttpRequest does not yet accept other content types
     let query = "INSERT INTO body (id, body_text)\
                         VALUES ($1, $2)";
 

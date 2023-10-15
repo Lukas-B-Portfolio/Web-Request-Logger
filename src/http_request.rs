@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fmt;
-use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, TcpStream};
 use std::path::Path;
@@ -17,7 +16,7 @@ pub fn parse_request(mut stream: &TcpStream) -> HttpRequest {
     line.clear();   // buf_reader.read_line appends to the String buffer thus it need to be cleared here
     // Read headers
     buf_reader.read_line(&mut line).expect("Unable to read line from BufReader.");
-    while line.contains(":") {
+    while line.contains(':') {
         let line_vec: Vec<&str> = line.trim().split(": ").collect();
         headers.insert(line_vec[0].to_string(), line_vec[1].to_string());
         line.clear();   // buf_reader.read_line appends to the String buffer thus it need to be cleared here
@@ -25,20 +24,19 @@ pub fn parse_request(mut stream: &TcpStream) -> HttpRequest {
     }
     // Read body (if one was declared in headers)
     // Currently only reads UTF-8 bodies
-    // TODO Implement MIME type bodies
-    let body: Option<String>;
-    if headers.contains_key("content-length") {
-        let body_length = headers.get("content-length").unwrap().parse::<usize>().
-            expect("Content length header could not be parsed to usize.");
-        let mut body_buffer = vec![0u8; body_length];
-        buf_reader.read_exact(&mut body_buffer).expect("Unable to read body from buf_reader.");
-        body = match String::from_utf8(body_buffer) {
-            Ok(v) => Some(v),
-            Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+    let body: Option<String> =
+        if headers.contains_key("content-length") { // content-type might not be supplied for text
+            let body_length = headers.get("content-length").unwrap().parse::<usize>().
+                expect("Content length header could not be parsed to usize.");
+            let mut body_buffer = vec![0u8; body_length];
+            buf_reader.read_exact(&mut body_buffer).expect("Unable to read body from buf_reader.");
+            match String::from_utf8(body_buffer) {
+                Ok(v) => Some(v),
+                Err(..) => None
+            }
+        } else {
+            None
         };
-    } else {
-        body = None;
-    }
     // Return HttpRequest adding timestamp and sender ip in the process
     HttpRequest {
         request_line: Box::from(request_line),
@@ -49,17 +47,9 @@ pub fn parse_request(mut stream: &TcpStream) -> HttpRequest {
     }
 }
 
-/// Always sends 200 OK response
-pub fn response(mut stream: TcpStream) {
-    let status_line = "HTTP/1.1 200 OK";
-    let response = format!("{status_line}\r\n");
-
-    stream.write_all(response.as_bytes()).unwrap();
-}
-
 /// Expects the first line from an HTTP Request and parses it into the RequestLine struct
-fn parse_request_line(line: &String) -> Result<RequestLine, &str, > {
-    let line: Vec<&str> = line.split(" ").collect();
+fn parse_request_line(line: &str) -> Result<RequestLine, &str, > {
+    let line: Vec<&str> = line.split(' ').collect();
     if line.len() != 3 {
         return Err("Invalid Request Line.");
     }
@@ -97,7 +87,16 @@ fn parse_request_line(line: &String) -> Result<RequestLine, &str, > {
     Ok(RequestLine{verb, target, version})
 }
 
+/// Always sends 200 OK response on given TcpStream
+pub fn response(mut stream: TcpStream) {
+    let status_line = "HTTP/1.1 200 OK";
+    let response = format!("{status_line}\r\n");
+
+    stream.write_all(response.as_bytes()).unwrap();
+}
+
 /// Writes Time and Ip to log file as well as a List of all lines in the stream
+/*
 pub fn log_request(mut stream: &TcpStream, log: &mut File) {
     let buf_reader = BufReader::new(&mut stream);
     let http_request: Vec<_> = buf_reader
@@ -108,26 +107,27 @@ pub fn log_request(mut stream: &TcpStream, log: &mut File) {
 
     let client_ip = stream.local_addr().unwrap().to_string();
 
-    log.write("\n-------------------------------------------\n".as_bytes())
+    log.write_all("\n-------------------------------------------\n".as_bytes())
         .expect("Failed to write to log.");
-    log.write("Received Request at:\t".as_bytes())
+    log.write_all("Received Request at:\t".as_bytes())
         .expect("Failed to write to log.");
-    log.write(Utc::now().to_rfc2822().as_bytes())
+    log.write_all(Utc::now().to_rfc2822().as_bytes())
         .expect("Failed to write Time to log.");
-    log.write("\nFrom IP:\t\t\t\t".as_bytes())
+    log.write_all("\nFrom IP:\t\t\t\t".as_bytes())
         .expect("Failed to write to log.");
-    log.write(client_ip.as_bytes())
+    log.write_all(client_ip.as_bytes())
         .expect("Failed to write IP to log.");
-    log.write("\nRequest:\n".as_bytes())
+    log.write_all("\nRequest:\n".as_bytes())
         .expect("Failed to write to log.");
 
     for s in &http_request {
-        log.write(s.as_bytes())
+        log.write_all(s.as_bytes())
             .expect("Failed to write part of the request to log.");
-        log.write("\n".as_bytes()).expect("Failed to write to log.");
+        log.write_all("\n".as_bytes()).expect("Failed to write to log.");
     }
     println!("Request: {:#?}", http_request);
 }
+ */
 
 #[derive(Debug)]
 pub struct HttpRequest {
@@ -167,11 +167,11 @@ impl fmt::Display for Verb {
 }
 
 #[derive(Debug)]
-pub enum Target {                   // defaults to AbsolutePath
-AbsolutePath(Box<Path>),
-    CompleteUrl(String),        // TODO Check for better type
-    AuthorityComponent,         // TODO figure out good representation
-    AsteriskForm(char)
+pub enum Target {    // defaults to AbsolutePath
+    AbsolutePath(Box<Path>),
+    CompleteUrl(String),
+    AuthorityComponent,         // Used witch CONNECT to set up an Http Tunnel
+    AsteriskForm(char)          // Used with Options representing the server as a whole
 }
 
 impl fmt::Display for Target {

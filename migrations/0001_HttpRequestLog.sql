@@ -1,7 +1,6 @@
 CREATE TABLE IF NOT EXISTS http_request (
     id SERIAL PRIMARY KEY,
     timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
-    host_ip INET NOT NULL,
     sender_ip CIDR NOT NULL,
     verb VARCHAR (7) NOT NULL,
     target VARCHAR (255) NOT NULL,
